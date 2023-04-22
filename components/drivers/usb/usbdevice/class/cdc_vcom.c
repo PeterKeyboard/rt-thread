@@ -332,14 +332,23 @@ static rt_err_t _ep_out_handler(ufunction_t func, rt_size_t size)
     if((data->serial.parent.flag & RT_DEVICE_FLAG_ACTIVATED)
         && (data->serial.parent.open_flag & RT_DEVICE_OFLAG_OPEN))
     {
-        /* receive data from USB VCOM */
-        level = rt_hw_interrupt_disable();
-
-        rt_ringbuffer_put(&data->rx_ringbuffer, data->ep_out->buffer, size);
-        rt_hw_interrupt_enable(level);
-
+#ifdef RT_USING_SERIAL_V1
         /* notify receive data */
         rt_hw_serial_isr(&data->serial,RT_SERIAL_EVENT_RX_IND);
+#endif
+#ifdef RT_USING_SERIAL_V2
+        level = rt_hw_interrupt_disable();
+        res = rt_ringbuffer_get(&data->tx_ringbuffer, data->ep_out->buffer, CDC_BULKIN_MAXSIZE);
+        rt_hw_interrupt_enable(level);
+#endif
+        level = rt_hw_interrupt_disable();
+        /* receive data from USB VCOM */
+        rt_ringbuffer_put(&data->rx_ringbuffer, data->ep_out->buffer, size);
+        rt_hw_interrupt_enable(level);
+#ifdef RT_USING_SERIAL_V2
+        /* notify receive data */
+        rt_hw_serial_isr(&data->serial,RT_SERIAL_EVENT_RX_IND);
+#endif
     }
 
     data->ep_out->request.buffer = data->ep_out->buffer;
@@ -498,7 +507,9 @@ static rt_err_t _function_enable(ufunction_t func)
     data->ep_out->buffer = rt_malloc(CDC_RX_BUFSIZE);
     RT_ASSERT(data->ep_out->buffer != RT_NULL);
 
-#ifdef RT_USING_SERIAL_V2
+#if defined(RT_USING_SERIAL_V1)
+    data->serial.serial_rx = data->ep_out->buffer;
+#elif defined(RT_USING_SERIAL_V2)
     data->serial.serial_rx = &data->rx_ringbuffer;
 #endif
 
